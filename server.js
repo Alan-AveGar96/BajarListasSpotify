@@ -1,5 +1,4 @@
 const express = require("express");
-const yts = require("yt-search");
 const { execSync } = require("child_process");
 const cors = require("cors");
 const path = require("path");
@@ -17,13 +16,13 @@ try {
 
 const app = express();
 
-// Permite la conexión desde tu archivo prueba.html local
+// AJUSTE: CORS para permitir conexión desde tu prueba.html local
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST']
 }));
 
-// Carpeta temporal con permisos de escritura en Railway
+// CARPETA TEMPORAL: Railway solo permite escribir en /tmp
 const DOWNLOADS_DIR = '/tmp/temp_downloads'; 
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 
@@ -37,8 +36,6 @@ app.get("/playlist-progress", async (req, res) => {
 
     try {
         let cancionesParaBuscar = [];
-        
-        // DETECCIÓN MEJORADA: Busca cualquier rastro de "spotify" en la URL proporcionada
         const esSpotify = url.toLowerCase().includes('spotify');
 
         if (esSpotify) {
@@ -53,12 +50,13 @@ app.get("/playlist-progress", async (req, res) => {
             });
         } else {
             sendProgress({ status: "Analizando lista de YouTube..." });
-            const rawIds = execSync(`yt-dlp --get-id --flat-playlist "${url}"`).toString();
+            // Se añaden cookies también para el análisis inicial
+            const rawIds = execSync(`yt-dlp --cookies cookies.txt --get-id --flat-playlist "${url}"`).toString();
             cancionesParaBuscar = rawIds.trim().split('\n').map(id => `https://www.youtube.com/watch?v=${id.trim()}`);
         }
 
         const total = cancionesParaBuscar.length;
-        if (total === 0) throw new Error("No se encontraron canciones para procesar.");
+        if (total === 0) throw new Error("No se encontraron canciones.");
 
         const folderName = `lista-${Date.now()}`;
         const folderPath = path.join(DOWNLOADS_DIR, folderName);
@@ -72,9 +70,11 @@ app.get("/playlist-progress", async (req, res) => {
             });
             
             const query = cancionesParaBuscar[i];
+            
+            // MODIFICACIÓN MAESTRA: Se incluye --cookies cookies.txt en ambos comandos
             const comando = esSpotify 
-                ? `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
-                : `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
+                ? `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
+                : `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
 
             try {
                 execSync(comando);
@@ -83,9 +83,10 @@ app.get("/playlist-progress", async (req, res) => {
             }
         }
 
-        // Verificación de archivos antes de comprimir para evitar ZIPs vacíos
         const archivosGenerados = fs.readdirSync(folderPath);
-        if (archivosGenerados.length === 0) throw new Error("El proceso de descarga no generó archivos válidos.");
+        if (archivosGenerados.length === 0) {
+            throw new Error("YouTube bloqueó la descarga. Asegúrate de que cookies.txt sea reciente.");
+        }
 
         sendProgress({ status: "Preparando paquete ZIP..." });
         const zipName = `${folderName}.zip`;
