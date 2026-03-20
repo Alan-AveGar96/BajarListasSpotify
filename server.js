@@ -16,13 +16,13 @@ try {
 
 const app = express();
 
-// AJUSTE: CORS para permitir conexión desde tu prueba.html local
+// AJUSTE: Permite que tu prueba.html local conecte con Railway
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST']
 }));
 
-// CARPETA TEMPORAL: Railway solo permite escribir en /tmp
+// CARPETA TEMPORAL: Única con permisos de escritura en Railway
 const DOWNLOADS_DIR = '/tmp/temp_downloads'; 
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 
@@ -50,7 +50,7 @@ app.get("/playlist-progress", async (req, res) => {
             });
         } else {
             sendProgress({ status: "Analizando lista de YouTube..." });
-            // Se añaden cookies también para el análisis inicial
+            // Se añaden cookies para evitar bloqueos en la obtención de IDs
             const rawIds = execSync(`yt-dlp --cookies cookies.txt --get-id --flat-playlist "${url}"`).toString();
             cancionesParaBuscar = rawIds.trim().split('\n').map(id => `https://www.youtube.com/watch?v=${id.trim()}`);
         }
@@ -71,7 +71,7 @@ app.get("/playlist-progress", async (req, res) => {
             
             const query = cancionesParaBuscar[i];
             
-            // MODIFICACIÓN MAESTRA: Se incluye --cookies cookies.txt en ambos comandos
+            // USO DE COOKIES: Crucial para evitar archivos de 22 bytes
             const comando = esSpotify 
                 ? `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
                 : `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
@@ -85,7 +85,7 @@ app.get("/playlist-progress", async (req, res) => {
 
         const archivosGenerados = fs.readdirSync(folderPath);
         if (archivosGenerados.length === 0) {
-            throw new Error("YouTube bloqueó la descarga. Asegúrate de que cookies.txt sea reciente.");
+            throw new Error("YouTube bloqueó la descarga. Sube un archivo cookies.txt actualizado.");
         }
 
         sendProgress({ status: "Preparando paquete ZIP..." });
@@ -129,5 +129,5 @@ app.get("/get-zip", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✅ Servidor ejecutándose en puerto ${PORT}`);
+    console.log(`✅ Servidor activo en puerto ${PORT}`);
 });
