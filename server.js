@@ -1,6 +1,6 @@
 const express = require("express");
 const yts = require("yt-search");
-const { execSync, exec } = require("child_process");
+const { execSync } = require("child_process");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
@@ -10,7 +10,7 @@ const archiver = require("archiver");
 let getTracks;
 try {
     const fetch = require('node-fetch');
-    // Usamos la versión compatible con Railway
+    // Versión compatible para entornos Node modernos
     getTracks = require('spotify-url-info')(fetch).getTracks;
 } catch (e) {
     console.log("⚠️ Error cargando librerías de Spotify.");
@@ -18,22 +18,15 @@ try {
 
 const app = express();
 
-// AJUSTE 1: CORS abierto para que tu prueba.html local pueda hablar con Railway
+// PERMISOS: Permite que tu prueba.html local conecte con el servidor en Railway
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST']
 }));
 
-const publicPath = path.resolve(__dirname);
-app.use(express.static(publicPath));
-
-// AJUSTE 2: Ruta de descargas en /tmp (Única carpeta con permisos de escritura en Railway)
+// CARPETA TEMPORAL: Railway solo permite escribir en /tmp
 const DOWNLOADS_DIR = '/tmp/temp_downloads'; 
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(publicPath, 'prueba.html'));
-});
 
 app.get("/playlist-progress", async (req, res) => {
     const url = req.query.url;
@@ -45,8 +38,8 @@ app.get("/playlist-progress", async (req, res) => {
 
     try {
         let cancionesParaBuscar = [];
-        // AJUSTE 3: Detección correcta de links de Spotify
-        let esSpotify = url.includes('spotify.com'); 
+        // DETECCIÓN: Flexible para links de Spotify (normales o acortados)
+        let esSpotify = url.includes('spotify.com') || url.includes('spotify.link') || url.includes('googleusercontent.com/spotify.com');
 
         if (esSpotify) {
             if (!getTracks) throw new Error("Librería Spotify no instalada.");
@@ -60,7 +53,6 @@ app.get("/playlist-progress", async (req, res) => {
             });
         } else {
             sendProgress({ status: "Analizando lista de YouTube..." });
-            // Usamos una ruta absoluta para yt-dlp por seguridad
             const rawIds = execSync(`yt-dlp --get-id --flat-playlist "${url}"`).toString();
             cancionesParaBuscar = rawIds.trim().split('\n').map(id => `https://www.youtube.com/watch?v=${id.trim()}`);
         }
@@ -80,7 +72,6 @@ app.get("/playlist-progress", async (req, res) => {
             });
             
             let query = cancionesParaBuscar[i];
-            // Comando con --ffmpeg-location si fuera necesario, pero Railway suele tenerlo en el PATH
             let comando = esSpotify 
                 ? `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
                 : `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
@@ -92,6 +83,10 @@ app.get("/playlist-progress", async (req, res) => {
             }
         }
 
+        // VERIFICACIÓN: Evita crear un ZIP de 22 bytes si no hay archivos
+        const archivos = fs.readdirSync(folderPath);
+        if (archivos.length === 0) throw new Error("No se descargaron archivos MP3.");
+
         sendProgress({ status: "Comprimiendo archivos en un ZIP..." });
         const zipName = `${folderName}.zip`;
         const zipPath = path.join(DOWNLOADS_DIR, zipName);
@@ -99,7 +94,6 @@ app.get("/playlist-progress", async (req, res) => {
         const archive = archiver('zip', { zlib: { level: 9 } });
 
         output.on('close', () => {
-            // Borrar carpeta de MP3s original para liberar espacio inmediatamente
             fs.rmSync(folderPath, { recursive: true, force: true });
             sendProgress({ status: "Completado", file: zipName });
             res.end();
@@ -122,10 +116,9 @@ app.get("/get-zip", (req, res) => {
     if (fs.existsSync(filePath)) {
         res.download(filePath, (err) => {
             if (!err) {
-                // Borrado de seguridad después de descargar
                 setTimeout(() => {
                     if(fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                }, 10000); 
+                }, 15000); 
             }
         });
     } else {
@@ -133,8 +126,7 @@ app.get("/get-zip", (req, res) => {
     }
 });
 
-// Railway usa la variable de entorno PORT
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✅ Servidor en puerto ${PORT}`);
+    console.log(`✅ Servidor activo en puerto ${PORT}`);
 });
