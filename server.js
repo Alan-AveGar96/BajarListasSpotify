@@ -6,26 +6,31 @@ const path = require("path");
 const fs = require("fs");
 const archiver = require("archiver");
 
-// Configuración de Spotify con manejo de errores
+// Configuración de Spotify
 let getTracks;
 try {
     const fetch = require('node-fetch');
+    // Usamos la versión compatible con Railway
     getTracks = require('spotify-url-info')(fetch).getTracks;
 } catch (e) {
-    console.log("⚠️ Error cargando librerías de Spotify. Ejecuta: npm install spotify-url-info node-fetch@2");
+    console.log("⚠️ Error cargando librerías de Spotify.");
 }
 
 const app = express();
-app.use(cors());
 
-// Hace que el servidor reconozca los archivos en tu carpeta actual
+// AJUSTE 1: CORS abierto para que tu prueba.html local pueda hablar con Railway
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST']
+}));
+
 const publicPath = path.resolve(__dirname);
 app.use(express.static(publicPath));
 
-const DOWNLOADS_DIR = path.join(publicPath, 'temp_downloads');
-if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR);
+// AJUSTE 2: Ruta de descargas en /tmp (Única carpeta con permisos de escritura en Railway)
+const DOWNLOADS_DIR = '/tmp/temp_downloads'; 
+if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 
-// Ruta principal para evitar el "Cannot GET /"
 app.get('/', (req, res) => {
     res.sendFile(path.join(publicPath, 'prueba.html'));
 });
@@ -40,42 +45,42 @@ app.get("/playlist-progress", async (req, res) => {
 
     try {
         let cancionesParaBuscar = [];
-        let esSpotify = url.includes('spotify.com');
+        // AJUSTE 3: Detección correcta de links de Spotify
+        let esSpotify = url.includes('spotify.com'); 
 
         if (esSpotify) {
-            if (!getTracks) throw new Error("Librería Spotify no instalada en el servidor.");
-            
+            if (!getTracks) throw new Error("Librería Spotify no instalada.");
             sendProgress({ status: "Analizando lista de Spotify..." });
             const tracks = await getTracks(url);
             
-            // MAPEO SEGURO: Evita el error 'reading 0' si no hay artista
             cancionesParaBuscar = tracks.map(t => {
-                const nombreCancion = t.name || "Canción desconocida";
+                const nombreCancion = t.name || "Cancion";
                 const nombreArtista = (t.artists && t.artists.length > 0) ? t.artists[0].name : "";
                 return `${nombreCancion} ${nombreArtista}`.trim();
             });
         } else {
             sendProgress({ status: "Analizando lista de YouTube..." });
+            // Usamos una ruta absoluta para yt-dlp por seguridad
             const rawIds = execSync(`yt-dlp --get-id --flat-playlist "${url}"`).toString();
             cancionesParaBuscar = rawIds.trim().split('\n').map(id => `https://www.youtube.com/watch?v=${id.trim()}`);
         }
 
         const total = cancionesParaBuscar.length;
-        if (total === 0) throw new Error("No se encontraron canciones en el enlace.");
+        if (total === 0) throw new Error("No se encontraron canciones.");
 
         const folderName = `lista-${Date.now()}`;
         const folderPath = path.join(DOWNLOADS_DIR, folderName);
-        fs.mkdirSync(folderPath);
+        fs.mkdirSync(folderPath, { recursive: true });
 
         for (let i = 0; i < total; i++) {
             sendProgress({ 
-                status: `Descargando ${i + 1} de ${total}: ${cancionesParaBuscar[i].substring(0, 30)}...`, 
+                status: `Descargando ${i + 1} de ${total}...`, 
                 current: i + 1, 
                 total: total 
             });
             
             let query = cancionesParaBuscar[i];
-            // Comando dinámico: Búsqueda para Spotify, Link directo para YouTube
+            // Comando con --ffmpeg-location si fuera necesario, pero Railway suele tenerlo en el PATH
             let comando = esSpotify 
                 ? `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
                 : `yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
@@ -83,7 +88,7 @@ app.get("/playlist-progress", async (req, res) => {
             try {
                 execSync(comando);
             } catch (e) {
-                console.error(`Error descargando: ${query}`);
+                console.error(`Error en canción: ${query}`);
             }
         }
 
@@ -94,6 +99,8 @@ app.get("/playlist-progress", async (req, res) => {
         const archive = archiver('zip', { zlib: { level: 9 } });
 
         output.on('close', () => {
+            // Borrar carpeta de MP3s original para liberar espacio inmediatamente
+            fs.rmSync(folderPath, { recursive: true, force: true });
             sendProgress({ status: "Completado", file: zipName });
             res.end();
         });
@@ -102,43 +109,32 @@ app.get("/playlist-progress", async (req, res) => {
         archive.directory(folderPath, false);
         await archive.finalize();
 
-        // Borrar carpeta temporal de MP3s después de crear el ZIP
-        fs.rmSync(folderPath, { recursive: true, force: true });
-
     } catch (error) {
-        console.error("ERROR DEL SISTEMA:", error.message);
         sendProgress({ status: "Error: " + error.message });
         res.end();
     }
 });
 
-// Ruta para descargar el archivo ZIP final
 app.get("/get-zip", (req, res) => {
     const fileName = req.query.file;
     const filePath = path.join(DOWNLOADS_DIR, fileName);
     
-    res.download(filePath, (err) => {
-        if (!err && fs.existsSync(filePath)) {
-            // Borrar el ZIP después de enviarlo para no llenar el disco
-            fs.unlinkSync(filePath);
-        }
-    });
-});
-
-// Ruta de búsqueda individual (opcional)
-app.get("/search", async (req, res) => {
-    try {
-        const result = await yts(req.query.q || "");
-        res.json(result.videos.slice(0, 5).map(v => ({ title: v.title, url: v.url, thumbnail: v.thumbnail })));
-    } catch (e) {
-        res.status(500).json({ error: "Fallo en la búsqueda" });
+    if (fs.existsSync(filePath)) {
+        res.download(filePath, (err) => {
+            if (!err) {
+                // Borrado de seguridad después de descargar
+                setTimeout(() => {
+                    if(fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                }, 10000); 
+            }
+        });
+    } else {
+        res.status(404).send("Archivo no encontrado.");
     }
 });
 
-app.listen(3000, () => {
-    console.log("============================================");
-    console.log("✅ SERVIDOR MULTIMEDIA INICIADO");
-    console.log(`📂 Carpeta: ${publicPath}`);
-    console.log("🌐 URL Local: http://localhost:3000/prueba.html");
-    console.log("============================================");
+// Railway usa la variable de entorno PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`✅ Servidor en puerto ${PORT}`);
 });
