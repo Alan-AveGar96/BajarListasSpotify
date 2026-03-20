@@ -1,52 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <title>Descargador Pro</title>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
-        .box { border: 2px solid #1DB954; padding: 30px; display: inline-block; border-radius: 10px; background: #181818; }
-        input { padding: 12px; width: 350px; border-radius: 5px; border: none; margin-bottom: 10px; }
-        button { padding: 12px 25px; background: #1DB954; color: white; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; }
-        #status { margin-top: 20px; color: #1DB954; font-weight: bold; font-size: 1.1em; }
+        body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; padding-top: 80px; }
+        .container { border: 2px solid #1DB954; padding: 40px; display: inline-block; border-radius: 15px; background: #181818; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { margin-bottom: 30px; font-size: 2.5em; }
+        input { padding: 15px; width: 400px; border-radius: 8px; border: none; font-size: 16px; margin-right: 10px; }
+        button { padding: 15px 30px; background: #1DB954; color: white; border: none; cursor: pointer; border-radius: 8px; font-weight: bold; font-size: 16px; transition: 0.3s; }
+        button:hover { background: #1ed760; transform: scale(1.05); }
+        #status { margin-top: 30px; color: #1DB954; font-weight: bold; font-size: 1.2em; min-height: 1.2em; }
     </style>
 </head>
 <body>
-    <div class="box">
+    <div class="container">
         <h1>Descargador Pro</h1>
-        <input type="text" id="link" placeholder="Pega link de Spotify o YouTube">
-        <button onclick="procesar()">¡PROCESAR!</button>
-        <div id="status">Esperando link...</div>
+        <div style="display: flex; align-items: center; justify-content: center;">
+            <input type="text" id="link" placeholder="Pega aquí el enlace de Spotify o YouTube">
+            <button onclick="procesar()">¡PROCESAR!</button>
+        </div>
+        <div id="status">Esperando acción...</div>
     </div>
 
     <script>
-        // URL de tu servicio en Railway
         const RAILWAY_URL = "https://bajarlistasspotify-production.up.railway.app";
 
         function procesar() {
-            const url = document.getElementById('link').value;
-            const status = document.getElementById('status');
-            if(!url) return alert("Por favor, pega un link válido.");
+            const urlInput = document.getElementById('link').value.trim();
+            const statusDiv = document.getElementById('status');
             
-            status.innerText = "Conectando con el servidor en la nube...";
+            if(!urlInput) {
+                alert("Debes pegar un enlace válido.");
+                return;
+            }
             
-            const ev = new EventSource(`${RAILWAY_URL}/playlist-progress?url=${encodeURIComponent(url)}`);
+            statusDiv.innerText = "Estableciendo conexión con Railway...";
             
-            ev.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                status.innerText = data.status;
+            const eventSource = new EventSource(`${RAILWAY_URL}/playlist-progress?url=${encodeURIComponent(urlInput)}`);
+            
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                statusDiv.innerText = data.status;
                 
                 if(data.status === "Completado") {
-                    ev.close();
-                    status.innerText = "¡Descarga lista! Iniciando transferencia...";
+                    eventSource.close();
+                    statusDiv.innerText = "¡Todo listo! Iniciando descarga del archivo...";
                     window.location.href = `${RAILWAY_URL}/get-zip?file=${data.file}`;
                 }
             };
 
-            ev.onerror = (err) => {
-                console.error("Error:", err);
-                status.innerText = "Error: No se pudo conectar. Verifica los logs de Railway.";
-                ev.close();
+            eventSource.onerror = (err) => {
+                console.error("Error de conexión:", err);
+                statusDiv.innerText = "Error: No se pudo conectar con el servidor. Revisa los logs en Railway.";
+                eventSource.close();
             };
         }
     </script>
