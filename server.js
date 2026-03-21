@@ -1,134 +1,41 @@
-const express = require("express");
-const { execSync } = require("child_process");
-const cors = require("cors");
-const path = require("path");
-const fs = require("fs");
-const archiver = require("archiver");
-
-// Configuración de Spotify
-let getTracks;
-try {
-    const fetch = require('node-fetch');
-    getTracks = require('spotify-url-info')(fetch).getTracks;
-} catch (e) {
-    console.log("⚠️ Error cargando librerías de Spotify.");
-}
-
+const express = require('express');
+const cors = require('cors');
+const { exec } = require('child_process');
+const path = require('path');
 const app = express();
 
-// AJUSTE: Permite que tu prueba.html local conecte con Railway
+// 1. CONFIGURACIÓN DE CORS (Crítico para localhost)
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    origin: '*', // Permite que tu prueba.html en localhost se conecte
+    methods: ['GET', 'POST']
 }));
 
-// CARPETA TEMPORAL: Única con permisos de escritura en Railway
-const DOWNLOADS_DIR = '/tmp/temp_downloads'; 
-if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+app.use(express.json());
 
-app.get("/playlist-progress", async (req, res) => {
-    const url = req.query.url;
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+// 2. PUERTO DINÁMICO (Indispensable para Railway)
+const PORT = process.env.PORT || 8080; 
 
-    const sendProgress = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-    try {
-        let cancionesParaBuscar = [];
-        const esSpotify = url.toLowerCase().includes('spotify');
-
-        if (esSpotify) {
-            if (!getTracks) throw new Error("Librería Spotify no instalada.");
-            sendProgress({ status: "Analizando contenido de Spotify..." });
-            
-            const tracks = await getTracks(url);
-            cancionesParaBuscar = tracks.map(t => {
-                const nombre = t.name || "Cancion";
-                const artista = (t.artists && t.artists.length > 0) ? t.artists[0].name : "";
-                return `${nombre} ${artista}`.trim();
-            });
-        } else {
-            sendProgress({ status: "Analizando lista de YouTube..." });
-            // Se añaden cookies para evitar bloqueos en la obtención de IDs
-            const rawIds = execSync(`yt-dlp --cookies cookies.txt --get-id --flat-playlist "${url}"`).toString();
-            cancionesParaBuscar = rawIds.trim().split('\n').map(id => `https://www.youtube.com/watch?v=${id.trim()}`);
-        }
-
-        const total = cancionesParaBuscar.length;
-        if (total === 0) throw new Error("No se encontraron canciones.");
-
-        const folderName = `lista-${Date.now()}`;
-        const folderPath = path.join(DOWNLOADS_DIR, folderName);
-        fs.mkdirSync(folderPath, { recursive: true });
-
-        for (let i = 0; i < total; i++) {
-            sendProgress({ 
-                status: `Descargando pieza ${i + 1} de ${total}...`, 
-                current: i + 1, 
-                total: total 
-            });
-            
-            const query = cancionesParaBuscar[i];
-            
-            // USO DE COOKIES: Crucial para evitar archivos de 22 bytes
-            const comando = esSpotify 
-                ? `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "ytsearch1:${query}"`
-                : `yt-dlp --cookies cookies.txt -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${query}"`;
-
-            try {
-                execSync(comando);
-            } catch (e) {
-                console.error(`Error en: ${query}`);
-            }
-        }
-
-        const archivosGenerados = fs.readdirSync(folderPath);
-        if (archivosGenerados.length === 0) {
-            throw new Error("YouTube bloqueó la descarga. Sube un archivo cookies.txt actualizado.");
-        }
-
-        sendProgress({ status: "Preparando paquete ZIP..." });
-        const zipName = `${folderName}.zip`;
-        const zipPath = path.join(DOWNLOADS_DIR, zipName);
-        const output = fs.createWriteStream(zipPath);
-        const archive = archiver('zip', { zlib: { level: 9 } });
-
-        output.on('close', () => {
-            fs.rmSync(folderPath, { recursive: true, force: true });
-            sendProgress({ status: "Completado", file: zipName });
-            res.end();
-        });
-
-        archive.pipe(output);
-        archive.directory(folderPath, false);
-        await archive.finalize();
-
-    } catch (error) {
-        sendProgress({ status: "Error: " + error.message });
-        res.end();
-    }
+// Ruta principal para verificar que el servidor vive
+app.get('/', (req, res) => {
+    res.send('Servidor de Descargas Activo');
 });
 
-app.get("/get-zip", (req, res) => {
-    const fileName = req.query.file;
-    const filePath = path.join(DOWNLOADS_DIR, fileName);
+// 3. RUTA DE DESCARGA (Usa yt-dlp instalado por nixpacks)
+app.post('/download', (req, res) => {
+    const { url } = req.body;
     
-    if (fs.existsSync(filePath)) {
-        res.download(filePath, (err) => {
-            if (!err) {
-                setTimeout(() => {
-                    if(fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                }, 20000); 
-            }
-        });
-    } else {
-        res.status(404).send("Archivo no encontrado.");
-    }
+    // Comando que usa yt-dlp y ffmpeg (asegúrate de que Railway los instaló)
+    const command = `yt-dlp -x --audio-format mp3 "${url}"`; 
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error: ${error.message}`);
+            return res.status(500).json({ error: 'Error al procesar descarga' });
+        }
+        res.json({ message: 'Descarga finalizada con éxito' });
+    });
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Servidor activo en puerto ${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });
