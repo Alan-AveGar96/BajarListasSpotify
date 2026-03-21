@@ -4,35 +4,42 @@ const { exec } = require('child_process');
 const path = require('path');
 const app = express();
 
-// 1. CONFIGURACIÓN DE CORS (Crítico para localhost)
+// CONFIGURACIÓN DE CORS: Permite la conexión desde tu localhost
 app.use(cors({
-    origin: '*', // Permite que tu prueba.html en localhost se conecte
-    methods: ['GET', 'POST']
+    origin: '*', 
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
 }));
 
 app.use(express.json());
 
-// 2. PUERTO DINÁMICO (Indispensable para Railway)
+// PUERTO: Railway asignará uno automáticamente, o usará el 8080
 const PORT = process.env.PORT || 8080; 
 
-// Ruta principal para verificar que el servidor vive
+// Ruta para verificar que el servidor funciona
 app.get('/', (req, res) => {
-    res.send('Servidor de Descargas Activo');
+    res.send('Servidor de Descargas Activo y Listo');
 });
 
-// 3. RUTA DE DESCARGA (Usa yt-dlp instalado por nixpacks)
+// RUTA DE DESCARGA: Aquí es donde ocurre la magia
 app.post('/download', (req, res) => {
     const { url } = req.body;
     
-    // Comando que usa yt-dlp y ffmpeg (asegúrate de que Railway los instaló)
+    if (!url) {
+        return res.status(400).json({ error: 'Falta la URL' });
+    }
+
+    // Comando para descargar usando las herramientas de Nixpacks
     const command = `yt-dlp -x --audio-format mp3 "${url}"`; 
+
+    console.log(`Ejecutando descarga para: ${url}`);
 
     exec(command, (error, stdout, stderr) => {
         if (error) {
-            console.error(`Error: ${error.message}`);
-            return res.status(500).json({ error: 'Error al procesar descarga' });
+            console.error(`Error de yt-dlp: ${error.message}`);
+            return res.status(500).json({ error: 'Error al procesar la descarga. Revisa que el link sea válido.' });
         }
-        res.json({ message: 'Descarga finalizada con éxito' });
+        res.json({ message: 'Descarga finalizada con éxito en el servidor' });
     });
 });
 
