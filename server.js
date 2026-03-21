@@ -1,48 +1,29 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
-const path = require('path');
 const app = express();
 
-// CONFIGURACIÓN DE CORS: Permite la conexión desde tu localhost
-app.use(cors({
-    origin: '*', 
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
-}));
-
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// PUERTO: Railway asignará uno automáticamente, o usará el 8080
-const PORT = process.env.PORT || 8080; 
+const PORT = process.env.PORT || 8080;
 
-// Ruta para verificar que el servidor funciona
-app.get('/', (req, res) => {
-    res.send('Servidor de Descargas Activo y Listo');
-});
+app.get('/', (req, res) => res.send('Servidor Activo'));
 
-// RUTA DE DESCARGA: Aquí es donde ocurre la magia
 app.post('/download', (req, res) => {
     const { url } = req.body;
-    
-    if (!url) {
-        return res.status(400).json({ error: 'Falta la URL' });
-    }
+    if (!url) return res.status(400).json({ error: 'Falta la URL' });
 
-    // Comando para descargar usando las herramientas de Nixpacks
-    const command = `yt-dlp -x --audio-format mp3 "${url}"`; 
-
-    console.log(`Ejecutando descarga para: ${url}`);
+    // Usamos el comando directo de yt-dlp que instalará Nixpacks
+    const command = `yt-dlp -x --audio-format mp3 "${url}"`;
 
     exec(command, (error, stdout, stderr) => {
         if (error) {
-            console.error(`Error de yt-dlp: ${error.message}`);
-            return res.status(500).json({ error: 'Error al procesar la descarga. Revisa que el link sea válido.' });
+            console.error(`Error: ${error.message}`);
+            return res.status(500).json({ error: 'Error en el motor de descarga' });
         }
-        res.json({ message: 'Descarga finalizada con éxito en el servidor' });
+        res.json({ message: 'Descarga finalizada' });
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Puerto: ${PORT}`));

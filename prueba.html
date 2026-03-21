@@ -4,57 +4,40 @@
     <meta charset="UTF-8">
     <title>Descargador Pro</title>
     <style>
-        body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; padding-top: 80px; }
-        .container { border: 2px solid #1DB954; padding: 40px; display: inline-block; border-radius: 15px; background: #181818; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h1 { margin-bottom: 30px; font-size: 2.5em; }
-        input { padding: 15px; width: 400px; border-radius: 8px; border: none; font-size: 16px; margin-right: 10px; }
-        button { padding: 15px 30px; background: #1DB954; color: white; border: none; cursor: pointer; border-radius: 8px; font-weight: bold; font-size: 16px; transition: 0.3s; }
-        button:hover { background: #1ed760; transform: scale(1.05); }
-        #status { margin-top: 30px; color: #1DB954; font-weight: bold; font-size: 1.2em; min-height: 1.2em; }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
+        .container { border: 2px solid #1DB954; padding: 30px; border-radius: 15px; display: inline-block; background: #181818; }
+        input { padding: 10px; width: 300px; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; background: #1DB954; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #status { margin-top: 20px; color: #1DB954; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Descargador Pro</h1>
-        <div style="display: flex; align-items: center; justify-content: center;">
-            <input type="text" id="link" placeholder="Pega aquí el enlace de Spotify o YouTube">
-            <button onclick="procesar()">¡PROCESAR!</button>
-        </div>
-        <div id="status">Esperando acción...</div>
+        <input type="text" id="link" placeholder="Pega el link aquí">
+        <button onclick="procesar()">¡PROCESAR!</button>
+        <div id="status">Listo para descargar</div>
     </div>
 
     <script>
         const RAILWAY_URL = "https://bajarlistasspotify-production.up.railway.app";
 
-        function procesar() {
-            const urlInput = document.getElementById('link').value.trim();
-            const statusDiv = document.getElementById('status');
-            
-            if(!urlInput) {
-                alert("Debes pegar un enlace válido.");
-                return;
-            }
-            
-            statusDiv.innerText = "Estableciendo conexión con Railway...";
-            
-            const eventSource = new EventSource(`${RAILWAY_URL}/playlist-progress?url=${encodeURIComponent(urlInput)}`);
-            
-            eventSource.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                statusDiv.innerText = data.status;
-                
-                if(data.status === "Completado") {
-                    eventSource.close();
-                    statusDiv.innerText = "¡Todo listo! Iniciando descarga del archivo...";
-                    window.location.href = `${RAILWAY_URL}/get-zip?file=${data.file}`;
-                }
-            };
+        async function procesar() {
+            const url = document.getElementById('link').value;
+            const status = document.getElementById('status');
+            status.innerText = "Procesando en la nube...";
 
-            eventSource.onerror = (err) => {
-                console.error("Error de conexión:", err);
-                statusDiv.innerText = "Error: No se pudo conectar con el servidor. Revisa los logs en Railway.";
-                eventSource.close();
-            };
+            try {
+                const res = await fetch(`${RAILWAY_URL}/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                status.innerText = res.ok ? "¡Éxito! Archivo procesado." : "Error: " + data.error;
+            } catch (e) {
+                status.innerText = "Error de conexión. Revisa los logs.";
+            }
         }
     </script>
 </body>
