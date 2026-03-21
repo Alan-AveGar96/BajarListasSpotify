@@ -19,7 +19,8 @@ const app = express();
 // AJUSTE: Permite que tu prueba.html local conecte con Railway
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
 }));
 
 // CARPETA TEMPORAL: Única con permisos de escritura en Railway
