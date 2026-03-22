@@ -2,7 +2,7 @@
 nixPkgs = ["python3", "ffmpeg", "nodejs_18"]
 
 [phases.build]
-cmds = ["npm ci", "python3 -m pip install yt-dlp"]
+cmds = ["npm ci", "python3 -m pip install yt-dlp --break-system-packages"]
 
 [start]
 cmd = "node server.js"
