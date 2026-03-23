@@ -2,41 +2,60 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descargador Pro</title>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
-        .container { border: 2px solid #1DB954; padding: 30px; border-radius: 15px; display: inline-block; background: #181818; }
-        input { padding: 10px; width: 300px; border-radius: 5px; border: none; }
-        button { padding: 10px 20px; background: #1DB954; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #status { margin-top: 20px; color: #1DB954; }
+        .container { border: 2px solid #1DB954; padding: 30px; border-radius: 15px; display: inline-block; background: #181818; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        input { padding: 12px; width: 300px; border-radius: 5px; border: none; margin-bottom: 10px; outline: none; }
+        button { padding: 12px 25px; background: #1DB954; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
+        button:active { transform: scale(0.95); }
+        #status { margin-top: 20px; color: #1DB954; font-weight: bold; min-height: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Descargador Pro</h1>
-        <input type="text" id="link" placeholder="Pega el link aquí">
+        <input type="text" id="link" placeholder="Pega el link de YouTube o Spotify aquí">
+        <br>
         <button onclick="procesar()">¡PROCESAR!</button>
         <div id="status">Listo para descargar</div>
     </div>
 
     <script>
-        const RAILWAY_URL = "https://bajarlistasspotify-production.up.railway.app";
+        // MEJORA: Usar la URL actual del navegador automáticamente
+        const API_URL = window.location.origin;
 
         async function procesar() {
-            const url = document.getElementById('link').value;
+            const urlInput = document.getElementById('link');
             const status = document.getElementById('status');
-            status.innerText = "Procesando en la nube...";
+            
+            if (!urlInput.value) {
+                status.innerText = "Por favor, pega un link primero.";
+                return;
+            }
+
+            status.innerText = "⏳ Procesando en la nube (esto puede tardar)...";
+            status.style.color = "#1DB954";
 
             try {
-                const res = await fetch(`${RAILWAY_URL}/download`, {
+                const res = await fetch(`${API_URL}/download`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
+                    body: JSON.stringify({ url: urlInput.value })
                 });
+                
                 const data = await res.json();
-                status.innerText = res.ok ? "¡Éxito! Archivo procesado." : "Error: " + data.error;
+                
+                if (res.ok) {
+                    status.innerText = "✅ ¡Éxito! Archivo procesado en el servidor.";
+                } else {
+                    status.innerText = "❌ Error: " + (data.error || "Algo salió mal");
+                    status.style.color = "#ff4444";
+                }
             } catch (e) {
-                status.innerText = "Error de conexión. Revisa los logs.";
+                status.innerText = "🚫 Error de conexión. Revisa los logs de Railway.";
+                status.style.color = "#ff4444";
             }
         }
     </script>
