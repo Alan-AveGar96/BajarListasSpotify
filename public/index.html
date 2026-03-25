@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Descargador Pro</title>
+
+  <style>
+    body {
+      background: #0f0f0f;
+      color: white;
+      font-family: Arial;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .box {
+      border: 2px solid #00ff88;
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+      width: 400px;
+    }
+
+    input {
+      width: 90%;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      margin-bottom: 15px;
+    }
+
+    button {
+      background: #00ff88;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+
+    .ok {
+      color: #00ff88;
+    }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h2>Descargador Pro</h2>
+
+  <input id="url" placeholder="Pega playlist Spotify">
+
+  <br>
+
+  <button onclick="procesar()">¡PROCESAR!</button>
+
+  <div id="estado"></div>
+  <ul id="lista"></ul>
+</div>
+
+<script>
+async function procesar() {
+  const url = document.getElementById("url").value;
+  const estado = document.getElementById("estado");
+  const lista = document.getElementById("lista");
+
+  estado.innerHTML = "Procesando...";
+  lista.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/playlist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url })
+    });
+
+    const data = await res.json();
+
+    if (data.error) {
+      estado.innerHTML = `<div class="error">${data.error}</div>`;
+      return;
+    }
+
+    estado.innerHTML = `<div class="ok">✔ Playlist procesada</div>`;
+
+    data.forEach(cancion => {
+      const li = document.createElement("li");
+
+      li.innerHTML = `
+        ${cancion.nombre} - ${cancion.artista}
+        <br>
+        <a href="${cancion.youtube}" target="_blank">YouTube</a>
+      `;
+
+      lista.appendChild(li);
+    });
+
+  } catch (err) {
+    estado.innerHTML = `<div class="error">Error conexión</div>`;
+  }
+}
+</script>
+
+</body>
+</html>

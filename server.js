@@ -1,91 +1,58 @@
-const express = require('express');
-const { execSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const archiver = require('archiver');
-const cors = require('cors');
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin: '*' }));
+// 🔥 Necesario para __dirname en ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Middlewares
+app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));   // sirve prueba.html
 
-const DOWNLOADS_DIR = '/tmp/downloads';
-if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+// 🔥 SERVIR EL FRONTEND
+app.use(express.static(path.join(__dirname, "public")));
 
-// 1. Ruta principal → muestra la interfaz
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'prueba.html'));
+// Ruta test
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/index.html"));
 });
 
-// 2. Progreso de playlist (SSE)
-app.get('/playlist-progress', async (req, res) => {
-  const url = req.query.url;
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+// 🔥 API PLAYLIST
+app.post("/api/playlist", async (req, res) => {
+  const { url } = req.body;
 
-  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  if (!url || !url.includes("spotify")) {
+    return res.json({ error: "Playlist inválida" });
+  }
 
   try {
-    const folderName = `lista-${Date.now()}`;
-    const folderPath = path.join(DOWNLOADS_DIR, folderName);
-    fs.mkdirSync(folderPath, { recursive: true });
-
-    send({ status: "Descargando canciones..." });
-
-    // Descarga todas las canciones
-    execSync(`yt-dlp -x --audio-format mp3 --no-playlist -o "${folderPath}/%(title)s.%(ext)s" "${url}"`);
-
-    send({ status: "Comprimiendo en ZIP..." });
-
-    const zipName = `${folderName}.zip`;
-    const zipPath = path.join(DOWNLOADS_DIR, zipName);
-
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-
-    archive.pipe(output);
-    archive.directory(folderPath, false);
-    await archive.finalize();
-
-    // Esperar a que el ZIP se escriba completamente
-    await new Promise((resolve, reject) => {
-      output.on('close', resolve);
-      output.on('error', reject);
-    });
-
-    // Borrar MP3s solo después
-    fs.rmSync(folderPath, { recursive: true, force: true });
-
-    send({ status: "Completado", file: zipName });
-    res.end();
-
-  } catch (err) {
-    console.error(err);
-    send({ status: "Error: " + err.message });
-    res.end();
-  }
-});
-
-// 3. Descargar el ZIP
-app.get('/get-zip', (req, res) => {
-  const file = req.query.file;
-  const filePath = path.join(DOWNLOADS_DIR, file);
-
-  if (fs.existsSync(filePath)) {
-    res.download(filePath, (err) => {
-      if (!err) {
-        setTimeout(() => {
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        }, 10000);
+    // 🔥 SIMULACIÓN (luego conectas Spotify real)
+    const canciones = [
+      {
+        nombre: "Canción 1",
+        artista: "Artista 1",
+        youtube: "https://youtube.com"
+      },
+      {
+        nombre: "Canción 2",
+        artista: "Artista 2",
+        youtube: "https://youtube.com"
       }
-    });
-  } else {
-    res.status(404).send('Archivo no encontrado');
+    ];
+
+    res.json(canciones);
+
+  } catch (error) {
+    console.error(error);
+    res.json({ error: "Error procesando playlist" });
   }
 });
 
-app.listen(PORT, () => console.log(`✅ Servidor listo en puerto ${PORT}`));
+// Puerto
+app.listen(3001, () => {
+  console.log("🚀 Servidor en http://localhost:3001");
+});
